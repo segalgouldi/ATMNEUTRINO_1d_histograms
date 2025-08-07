@@ -148,32 +148,21 @@ def load_event_data(rootfile, tree_path, selection_type, use_weights=True):
 
 def determine_selection_type(tree_path):
     """Determine selection type based on the third neutrino (detection type) in the path."""
-    # Path format: #nu_{initial} x #nu_{final} #nu_{selection} Selec
-    # The selection type is determined by the third neutrino (what's detected)
-    
     if "Selec" in tree_path:
-        # Extract the part before "Selec", handling spacing variations
         channel_part = tree_path.split("Selec")[0].strip()
-        
-        # Split by "x" to get the three parts, handling extra spaces
         parts = [p.strip() for p in channel_part.split(" x ")]
         if len(parts) >= 3:
-            # The third part contains the selection type
             selection_part = parts[2].strip()
             if "#nu_{e}" in selection_part:
-                return "nue"  # electron-like selection
+                return "nue"
             elif "#nu_{#mu}" in selection_part:
-                return "numu"  # muon-like selection
+                return "numu"
             elif "#nu_{#tau}" in selection_part:
-                return "nue"  # tau events typically go to electron-like in DUNE
-        
-        # Fallback: look for selection indicators in the full path
+                return "nue"
         if " #nu_{e} " in channel_part or channel_part.endswith("#nu_{e}"):
             return "nue"
         elif " #nu_{#mu} " in channel_part or channel_part.endswith("#nu_{#mu}"):
             return "numu"
-    
-    # Final fallback
     print(f"Warning: Could not determine selection type for {tree_path}, defaulting to numu")
     return "numu"
 
@@ -186,16 +175,10 @@ def get_energy_bins(selection_type):
 
 def clean_channel_name(tree_path):
     """Extract and clean channel name from tree path."""
-    # Extract the channel part between "model/" and "Selec"
-    # Format: #nu_{initial} x #nu_{final} #nu_{selection} Selec
-    
     if "model/" in tree_path and "Selec" in tree_path:
         channel_raw = tree_path.split("model/")[1].split("Selec")[0].strip()
     else:
         channel_raw = tree_path.split("/")[-2]
-    
-    # Clean up ROOT formatting to make readable names
-    # Convert #nu_{e} x #nu_{#mu} #nu_{#mu} -> nue_to_numu_muselec
     clean_name = (channel_raw
                  .replace("#bar{#nu_{e}}", "antinue")
                  .replace("#bar{#nu_{#mu}}", "antinumu") 
@@ -207,13 +190,10 @@ def clean_channel_name(tree_path):
                  .replace("#", "")
                  .replace(" x ", "_to_")
                  .replace(" ", "_"))
-    
-    # Add selection type suffix for clarity
     if "_nue" in clean_name:
         clean_name = clean_name.replace("_nue", "_eselec")
     elif "_numu" in clean_name:
         clean_name = clean_name.replace("_numu", "_muselec")
-    
     return clean_name
 
 def plot_1d_comparison(hist_osc, hist_unosc, bins, channel_name, selection_type, xlabel, output_path):
@@ -226,36 +206,18 @@ def plot_1d_comparison(hist_osc, hist_unosc, bins, channel_name, selection_type,
     # Calculate statistics
     total_osc = hist_osc.sum()
     total_unosc = hist_unosc.sum()
-    
-    # Calculate weighted mean energies
     weighted_mean_osc = np.sum(bin_centers * hist_osc) / total_osc if total_osc > 0 else 0
     weighted_mean_unosc = np.sum(bin_centers * hist_unosc) / total_unosc if total_unosc > 0 else 0
-    
-    # Calculate standard deviations
-    if total_osc > 0:
-        std_osc = np.sqrt(np.sum(hist_osc * (bin_centers - weighted_mean_osc)**2) / total_osc)
-    else:
-        std_osc = 0
-    
-    if total_unosc > 0:
-        std_unosc = np.sqrt(np.sum(hist_unosc * (bin_centers - weighted_mean_unosc)**2) / total_unosc)
-    else:
-        std_unosc = 0
+    std_osc = np.sqrt(np.sum(hist_osc * (bin_centers - weighted_mean_osc)**2) / total_osc) if total_osc > 0 else 0
+    std_unosc = np.sqrt(np.sum(hist_unosc * (bin_centers - weighted_mean_unosc)**2) / total_unosc) if total_unosc > 0 else 0
     
     # Main plot - overlay histograms
-    ax.step(bin_centers, hist_unosc, where='mid', label='Unoscillated', 
-            linewidth=2, color='blue')
-    ax.step(bin_centers, hist_osc, where='mid', label='Oscillated', 
-            linewidth=2, color='red')
+    ax.step(bin_centers, hist_unosc, where='mid', label='Unoscillated', linewidth=2, color='blue')
+    ax.step(bin_centers, hist_osc, where='mid', label='Oscillated', linewidth=2, color='red')
     
-    # Determine selection type name
+    # Title and labels
     sel_name = "Electron-like" if selection_type == "nue" else "Muon-like"
-    
-    # Create nice title
-    title = f"{channel_name} ({sel_name} Selection)"
-    ax.set_title(title, fontsize=14, fontweight='bold')
-    
-    # Set axis labels
+    ax.set_title(f"{channel_name} ({sel_name} Selection)", fontsize=14, fontweight='bold')
     ax.set_xlabel('log₁₀(E/GeV)', fontsize=12)
     ax.set_ylabel('Event Rate', fontsize=12)
     
@@ -264,15 +226,15 @@ def plot_1d_comparison(hist_osc, hist_unosc, bins, channel_name, selection_type,
     ax.set_yscale('log')
     ax.grid(True, alpha=0.3)
     
-    # Set reasonable x-limits to avoid zero
+    # Show full overflow bin up to bins[-1] (e.g. 10000 GeV)
     min_energy = bins[bins > 0].min()
-    ax.set_xlim(min_energy, 100)  # Cap at 100 GeV for better visibility
+    ax.set_xlim(min_energy, bins[-1])
     
-    # Set nice tick marks for energy
-    ax.set_xticks([0.1, 1, 10, 100])
+    # Tick marks at every decade out to the overflow edge
+    ax.set_xticks([0.1, 1, 10, 100, 1000, bins[-1]])
     ax.get_xaxis().set_major_formatter(mtick.ScalarFormatter())
     
-    # Create statistics legend box
+    # Create statistics box
     legend_text = f"""Unoscillated:
 Entries: {total_unosc:.0f}
 Mean: {weighted_mean_unosc:.2f} GeV
@@ -282,12 +244,8 @@ Oscillated:
 Entries: {total_osc:.1f}
 Mean: {weighted_mean_osc:.2f} GeV  
 Std: {std_osc:.2f} GeV"""
-    
-    # Add legend with statistics
     line_legend = ax.legend(loc='upper right')
-    ax.add_artist(line_legend)  # Keep the line legend
-    
-    # Add statistics box
+    ax.add_artist(line_legend)
     props = dict(boxstyle='round', facecolor='wheat', alpha=0.8)
     ax.text(0.02, 0.98, legend_text, transform=ax.transAxes, fontsize=10,
             verticalalignment='top', bbox=props, family='monospace')
@@ -299,20 +257,16 @@ Std: {std_osc:.2f} GeV"""
 def main():
     parser = argparse.ArgumentParser(description="Create 1D neutrino energy histograms")
     parser.add_argument("--osc", required=True, help="Oscillated ROOT file")
-    parser.add_argument("--unosc", required=True, help="Unoscillated ROOT file") 
+    parser.add_argument("--unosc", required=True, help="Unoscillated ROOT file")
     parser.add_argument("--outdir", default="1d_histograms", help="Output directory")
     parser.add_argument("--dry-run", action="store_true", help="Just list trees, don't plot")
     args = parser.parse_args()
     
-    # Create output directory
     os.makedirs(args.outdir, exist_ok=True)
-    
-    # Find all selection trees
     trees = find_selection_trees(args.osc)
     if not trees:
         print("No selection trees found!")
         return
-    
     if args.dry_run:
         print("Dry run complete - trees listed above")
         return
@@ -323,94 +277,66 @@ def main():
     agg_numu_reco_osc = agg_numu_reco_unosc = None 
     agg_numu_true_osc = agg_numu_true_unosc = None
     
-    # Process each tree
     for tree_path in trees:
-        print(f"\nProcessing: {tree_path}")
-        
-        # Determine selection type and get appropriate bins
         sel_type = determine_selection_type(tree_path)
         energy_bins = get_energy_bins(sel_type)
         channel_name = clean_channel_name(tree_path)
         
-        print(f"  Selection type: {sel_type}")
-        print(f"  Channel name: {channel_name}")
+        E_reco_osc, E_true_osc, weights_osc = load_event_data(
+            args.osc, tree_path, sel_type, use_weights=True)
+        E_reco_unosc, E_true_unosc, weights_unosc = load_event_data(
+            args.unosc, tree_path, sel_type, use_weights=False)
         
-        try:
-            # Load data (weights only for oscillated)
-            E_reco_osc, E_true_osc, weights_osc = load_event_data(
-                args.osc, tree_path, sel_type, use_weights=True)
-            E_reco_unosc, E_true_unosc, weights_unosc = load_event_data(
-                args.unosc, tree_path, sel_type, use_weights=False)
-            
-            print(f"  Loaded {len(E_reco_osc)} osc events, {len(E_reco_unosc)} unosc events")
-            
-            # Create histograms
-            hist_reco_osc, _ = np.histogram(E_reco_osc, bins=energy_bins, weights=weights_osc)
-            hist_reco_unosc, _ = np.histogram(E_reco_unosc, bins=energy_bins, weights=weights_unosc)
-            hist_true_osc, _ = np.histogram(E_true_osc, bins=energy_bins, weights=weights_osc)
-            hist_true_unosc, _ = np.histogram(E_true_unosc, bins=energy_bins, weights=weights_unosc)
-            
-            # Individual channel plots
-            plot_1d_comparison(hist_reco_osc, hist_reco_unosc, energy_bins, channel_name, sel_type,
-                             "Reconstructed Energy [GeV]",
-                             os.path.join(args.outdir, f"{channel_name}_reco.png"))
-            
-            plot_1d_comparison(hist_true_osc, hist_true_unosc, energy_bins, channel_name, sel_type,
-                             "True Energy [GeV]",
-                             os.path.join(args.outdir, f"{channel_name}_true.png"))
-            
-            # Accumulate for aggregate plots
-            if sel_type == "nue":
-                if agg_nue_reco_osc is None:
-                    agg_nue_reco_osc = hist_reco_osc.copy()
-                    agg_nue_reco_unosc = hist_reco_unosc.copy()
-                    agg_nue_true_osc = hist_true_osc.copy()
-                    agg_nue_true_unosc = hist_true_unosc.copy()
-                else:
-                    agg_nue_reco_osc += hist_reco_osc
-                    agg_nue_reco_unosc += hist_reco_unosc
-                    agg_nue_true_osc += hist_true_osc
-                    agg_nue_true_unosc += hist_true_unosc
-            else:  # numu
-                if agg_numu_reco_osc is None:
-                    agg_numu_reco_osc = hist_reco_osc.copy()
-                    agg_numu_reco_unosc = hist_reco_unosc.copy()
-                    agg_numu_true_osc = hist_true_osc.copy()
-                    agg_numu_true_unosc = hist_true_unosc.copy()
-                else:
-                    agg_numu_reco_osc += hist_reco_osc
-                    agg_numu_reco_unosc += hist_reco_unosc
-                    agg_numu_true_osc += hist_true_osc
-                    agg_numu_true_unosc += hist_true_unosc
-                    
-        except Exception as e:
-            print(f"  Error processing {channel_name}: {e}")
-            continue
+        hist_reco_osc, _ = np.histogram(E_reco_osc, bins=energy_bins, weights=weights_osc)
+        hist_reco_unosc, _ = np.histogram(E_reco_unosc, bins=energy_bins, weights=weights_unosc)
+        hist_true_osc, _ = np.histogram(E_true_osc, bins=energy_bins, weights=weights_osc)
+        hist_true_unosc, _ = np.histogram(E_true_unosc, bins=energy_bins, weights=weights_unosc)
+        
+        plot_1d_comparison(hist_reco_osc, hist_reco_unosc, energy_bins, channel_name, sel_type,
+                          "Reconstructed Energy [GeV]",
+                          os.path.join(args.outdir, f"{channel_name}_reco.png"))
+        plot_1d_comparison(hist_true_osc, hist_true_unosc, energy_bins, channel_name, sel_type,
+                          "True Energy [GeV]",
+                          os.path.join(args.outdir, f"{channel_name}_true.png"))
+        
+        if sel_type == "nue":
+            if agg_nue_reco_osc is None:
+                agg_nue_reco_osc = hist_reco_osc.copy()
+                agg_nue_reco_unosc = hist_reco_unosc.copy()
+                agg_nue_true_osc = hist_true_osc.copy()
+                agg_nue_true_unosc = hist_true_unosc.copy()
+            else:
+                agg_nue_reco_osc += hist_reco_osc
+                agg_nue_reco_unosc += hist_reco_unosc
+                agg_nue_true_osc += hist_true_osc
+                agg_nue_true_unosc += hist_true_unosc
+        else:
+            if agg_numu_reco_osc is None:
+                agg_numu_reco_osc = hist_reco_osc.copy()
+                agg_numu_reco_unosc = hist_reco_unosc.copy()
+                agg_numu_true_osc = hist_true_osc.copy()
+                agg_numu_true_unosc = hist_true_unosc.copy()
+            else:
+                agg_numu_reco_osc += hist_reco_osc
+                agg_numu_reco_unosc += hist_reco_unosc
+                agg_numu_true_osc += hist_true_osc
+                agg_numu_true_unosc += hist_true_unosc
     
     # Create aggregate plots
-    print("\nCreating aggregate plots...")
-    
     if agg_nue_reco_osc is not None:
         plot_1d_comparison(agg_nue_reco_osc, agg_nue_reco_unosc, NUE_ENERGY_BINS,
-                         "All Channels", "nue",
-                         "Reconstructed Energy [GeV]", 
-                         os.path.join(args.outdir, "aggregate_nue_reco.png"))
-        
+                          "All Channels", "nue", "Reconstructed Energy [GeV]", 
+                          os.path.join(args.outdir, "aggregate_nue_reco.png"))
         plot_1d_comparison(agg_nue_true_osc, agg_nue_true_unosc, NUE_ENERGY_BINS,
-                         "All Channels", "nue",
-                         "True Energy [GeV]",
-                         os.path.join(args.outdir, "aggregate_nue_true.png"))
-    
+                          "All Channels", "nue", "True Energy [GeV]",
+                          os.path.join(args.outdir, "aggregate_nue_true.png"))
     if agg_numu_reco_osc is not None:
         plot_1d_comparison(agg_numu_reco_osc, agg_numu_reco_unosc, NUMU_ENERGY_BINS,
-                         "All Channels", "numu", 
-                         "Reconstructed Energy [GeV]",
-                         os.path.join(args.outdir, "aggregate_numu_reco.png"))
-        
+                          "All Channels", "numu", "Reconstructed Energy [GeV]",
+                          os.path.join(args.outdir, "aggregate_numu_reco.png"))
         plot_1d_comparison(agg_numu_true_osc, agg_numu_true_unosc, NUMU_ENERGY_BINS,
-                         "All Channels", "numu",
-                         "True Energy [GeV]", 
-                         os.path.join(args.outdir, "aggregate_numu_true.png"))
+                          "All Channels", "numu", "True Energy [GeV]", 
+                          os.path.join(args.outdir, "aggregate_numu_true.png"))
     
     print(f"\nAll plots saved to: {args.outdir}")
 
